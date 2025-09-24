@@ -2,95 +2,46 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-
-// Sample data structure for issues
-interface Issue {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  priority: 'high' | 'medium' | 'low';
-  status: 'new' | 'assigned' | 'in-progress' | 'resolved';
-  location: { lat: number; lng: number; address?: string };
-  imageUrl?: string;
-  reportedBy: string;
-  assignedTo?: string;
-  department?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Sample issues data (in real app, this would come from database)
-const sampleIssues: Issue[] = [
-  {
-    id: '1',
-    title: 'Large Pothole on Main Street',
-    description: 'Deep pothole causing vehicle damage near City Mall',
-    category: 'pothole',
-    priority: 'high',
-    status: 'new',
-    location: { lat: 19.0760, lng: 72.8777, address: 'Main Street, Mumbai' },
-    imageUrl: 'https://via.placeholder.com/300x200/dc3545/ffffff?text=Pothole',
-    reportedBy: 'citizen_123',
-    department: 'Public Works',
-    createdAt: '2024-01-15T10:30:00Z',
-    updatedAt: '2024-01-15T10:30:00Z'
-  },
-  {
-    id: '2',
-    title: 'Broken Streetlight',
-    description: 'Streetlight not working near bus stop, safety concern',
-    category: 'streetlight',
-    priority: 'medium',
-    status: 'assigned',
-    location: { lat: 19.0820, lng: 72.8850, address: 'Oak Avenue, Mumbai' },
-    imageUrl: 'https://via.placeholder.com/300x200/ffc107/000000?text=Streetlight',
-    reportedBy: 'citizen_456',
-    assignedTo: 'worker_789',
-    department: 'Electrical',
-    createdAt: '2024-01-14T15:45:00Z',
-    updatedAt: '2024-01-15T09:15:00Z'
-  },
-  {
-    id: '3',
-    title: 'Garbage Overflow',
-    description: 'Public dustbin overflowing, attracting stray animals',
-    category: 'garbage',
-    priority: 'low',
-    status: 'in-progress',
-    location: { lat: 19.0900, lng: 72.8700, address: 'Central Park, Mumbai' },
-    imageUrl: 'https://via.placeholder.com/300x200/28a745/ffffff?text=Garbage',
-    reportedBy: 'citizen_789',
-    assignedTo: 'worker_456',
-    department: 'Sanitation',
-    createdAt: '2024-01-13T08:20:00Z',
-    updatedAt: '2024-01-15T11:00:00Z'
-  },
-  {
-    id: '4',
-    title: 'Traffic Signal Malfunction',
-    description: 'Traffic light stuck on red, causing traffic jam',
-    category: 'traffic',
-    priority: 'high',
-    status: 'resolved',
-    location: { lat: 19.0600, lng: 72.8900, address: 'Junction Road, Mumbai' },
-    imageUrl: 'https://via.placeholder.com/300x200/17a2b8/ffffff?text=Traffic',
-    reportedBy: 'citizen_321',
-    assignedTo: 'worker_123',
-    department: 'Traffic Management',
-    createdAt: '2024-01-12T16:10:00Z',
-    updatedAt: '2024-01-14T14:30:00Z'
-  }
-];
+import { getIssues, updateIssueStatus, subscribeToIssues, Issue } from '../../lib/supabase';
 
 export default function AdminDashboard() {
-  const [issues, setIssues] = useState<Issue[]>(sampleIssues);
-  const [filteredIssues, setFilteredIssues] = useState<Issue[]>(sampleIssues);
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [filteredIssues, setFilteredIssues] = useState<Issue[]>([]);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Load issues from database
+  const loadIssues = async () => {
+    setLoading(true);
+    const { data, error } = await getIssues();
+    
+    if (error) {
+      console.error('Error loading issues:', error);
+    } else {
+      console.log('Loaded issues:', data);
+      setIssues(data || []);
+    }
+    setLoading(false);
+  };
+
+  // Setup real-time subscription
+  useEffect(() => {
+    loadIssues();
+    
+    // Subscribe to real-time changes
+    const subscription = subscribeToIssues((payload) => {
+      console.log('Real-time update:', payload);
+      loadIssues(); // Reload all issues when changes occur
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Filter issues based on selected filters
   useEffect(() => {
@@ -121,31 +72,30 @@ export default function AdminDashboard() {
     highPriority: issues.filter(i => i.priority === 'high').length,
   };
 
-  // Update issue status
-  const updateIssueStatus = (issueId: string, newStatus: Issue['status']) => {
-    setIssues(prevIssues =>
-      prevIssues.map(issue =>
-        issue.id === issueId
-          ? { ...issue, status: newStatus, updatedAt: new Date().toISOString() }
-          : issue
-      )
-    );
+  // Update issue status in database
+  const handleUpdateIssueStatus = async (issueId: string, newStatus: Issue['status']) => {
+    const { data, error } = await updateIssueStatus(issueId, newStatus);
+    
+    if (error) {
+      console.error('Error updating status:', error);
+      alert('Failed to update status');
+    } else {
+      console.log('Status updated:', data);
+      loadIssues(); // Reload to get updated data
+    }
   };
 
   // Assign issue to worker
-  const assignIssue = (issueId: string, workerId: string) => {
-    setIssues(prevIssues =>
-      prevIssues.map(issue =>
-        issue.id === issueId
-          ? { 
-              ...issue, 
-              assignedTo: workerId, 
-              status: 'assigned',
-              updatedAt: new Date().toISOString() 
-            }
-          : issue
-      )
-    );
+  const assignIssue = async (issueId: string, workerId: string) => {
+    const { data, error } = await updateIssueStatus(issueId, 'assigned', workerId);
+    
+    if (error) {
+      console.error('Error assigning issue:', error);
+      alert('Failed to assign issue');
+    } else {
+      console.log('Issue assigned:', data);
+      loadIssues(); // Reload to get updated data
+    }
   };
 
   // Get priority color
@@ -193,11 +143,14 @@ export default function AdminDashboard() {
               <p className="text-gray-600">Manage civic issues and track city improvements</p>
             </div>
             <div className="flex space-x-4">
-              <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700">
-                📊 Generate Report
-              </button>
+              <a
+                href="/"
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700"
+              >
+                📱 Citizen Portal
+              </a>
               <button className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700">
-                ➕ Add Worker
+                📊 Generate Report
               </button>
             </div>
           </div>
@@ -298,59 +251,66 @@ export default function AdminDashboard() {
         </div>
 
         {/* Issues Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredIssues.map((issue) => (
-            <div
-              key={issue.id}
-              className="bg-white rounded-xl shadow-sm border hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => {
-                setSelectedIssue(issue);
-                setShowModal(true);
-              }}
-            >
-              {/* Issue Image */}
-              {issue.imageUrl && (
-                <img
-                  src={issue.imageUrl}
-                  alt={issue.title}
-                  className="w-full h-48 object-cover rounded-t-xl"
-                />
-              )}
-              
-              {/* Issue Content */}
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-2xl">{getCategoryIcon(issue.category)}</span>
-                    <span className="font-semibold text-gray-900">{issue.title}</span>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(issue.priority)}`}>
-                    {issue.priority.toUpperCase()}
-                  </span>
-                </div>
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p className="mt-4 text-gray-600">Loading issues from database...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredIssues.map((issue) => (
+              <div
+                key={issue.id}
+                className="bg-white rounded-xl shadow-sm border hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => {
+                  setSelectedIssue(issue);
+                  setShowModal(true);
+                }}
+              >
+                {/* Issue Image */}
+                {issue.image_url && (
+                  <img
+                    src={issue.image_url}
+                    alt={issue.title}
+                    className="w-full h-48 object-cover rounded-t-xl"
+                  />
+                )}
                 
-                <p className="text-gray-600 text-sm mb-4 line-clamp-2">{issue.description}</p>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500">📍 {issue.location.address}</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(issue.status)}`}>
-                      {issue.status.replace('-', ' ').toUpperCase()}
+                {/* Issue Content */}
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-2xl">{getCategoryIcon(issue.category)}</span>
+                      <span className="font-semibold text-gray-900">{issue.title}</span>
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(issue.priority)}`}>
+                      {issue.priority.toUpperCase()}
                     </span>
                   </div>
                   
-                  <div className="flex justify-between items-center text-xs text-gray-500">
-                    <span>🏢 {issue.department}</span>
-                    <span>📅 {new Date(issue.createdAt).toLocaleDateString()}</span>
+                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">{issue.description}</p>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">📍 {issue.location_address}</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(issue.status)}`}>
+                        {issue.status.replace('-', ' ').toUpperCase()}
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center text-xs text-gray-500">
+                      <span>🏢 {issue.department}</span>
+                      <span>📅 {new Date(issue.created_at).toLocaleDateString()}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* No issues found */}
-        {filteredIssues.length === 0 && (
+        {!loading && filteredIssues.length === 0 && (
           <div className="text-center py-12">
             <div className="text-6xl mb-4">🔍</div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No Issues Found</h3>
@@ -376,9 +336,9 @@ export default function AdminDashboard() {
             </div>
             
             <div className="p-6">
-              {selectedIssue.imageUrl && (
+              {selectedIssue.image_url && (
                 <img
-                  src={selectedIssue.imageUrl}
+                  src={selectedIssue.image_url}
                   alt={selectedIssue.title}
                   className="w-full h-64 object-cover rounded-lg mb-6"
                 />
@@ -409,7 +369,7 @@ export default function AdminDashboard() {
                 
                 <div>
                   <span className="text-sm font-medium text-gray-700">Location:</span>
-                  <p className="text-gray-600">📍 {selectedIssue.location.address}</p>
+                  <p className="text-gray-600">📍 {selectedIssue.location_address}</p>
                 </div>
                 
                 <div>
@@ -417,38 +377,47 @@ export default function AdminDashboard() {
                   <p className="text-gray-600">🏢 {selectedIssue.department}</p>
                 </div>
                 
-                {selectedIssue.assignedTo && (
+                {selectedIssue.assigned_to && (
                   <div>
                     <span className="text-sm font-medium text-gray-700">Assigned to:</span>
-                    <p className="text-gray-600">👷 {selectedIssue.assignedTo}</p>
+                    <p className="text-gray-600">👷 {selectedIssue.assigned_to}</p>
                   </div>
                 )}
                 
                 <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
-                  <div>Created: {new Date(selectedIssue.createdAt).toLocaleString()}</div>
-                  <div>Updated: {new Date(selectedIssue.updatedAt).toLocaleString()}</div>
+                  <div>Created: {new Date(selectedIssue.created_at).toLocaleString()}</div>
+                  <div>Updated: {new Date(selectedIssue.updated_at).toLocaleString()}</div>
                 </div>
               </div>
               
               {/* Action buttons */}
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
-                  onClick={() => updateIssueStatus(selectedIssue.id, 'assigned')}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+                  onClick={() => {
+                    handleUpdateIssueStatus(selectedIssue.id, 'assigned');
+                    setShowModal(false);
+                  }}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:bg-gray-400"
                   disabled={selectedIssue.status === 'assigned'}
                 >
                   👤 Assign Task
                 </button>
                 <button
-                  onClick={() => updateIssueStatus(selectedIssue.id, 'in-progress')}
-                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700"
+                  onClick={() => {
+                    handleUpdateIssueStatus(selectedIssue.id, 'in-progress');
+                    setShowModal(false);
+                  }}
+                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 disabled:bg-gray-400"
                   disabled={selectedIssue.status === 'in-progress'}
                 >
                   🔄 Mark In Progress
                 </button>
                 <button
-                  onClick={() => updateIssueStatus(selectedIssue.id, 'resolved')}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                  onClick={() => {
+                    handleUpdateIssueStatus(selectedIssue.id, 'resolved');
+                    setShowModal(false);
+                  }}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400"
                   disabled={selectedIssue.status === 'resolved'}
                 >
                   ✅ Mark Resolved

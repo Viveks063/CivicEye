@@ -2,13 +2,16 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { createIssue, uploadImage } from '../lib/supabase';
 
 export default function CivicAIHome() {
   const [photo, setPhoto] = useState<string>('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
 
@@ -38,7 +41,7 @@ export default function CivicAIHome() {
     }
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     const video = videoRef.current;
     if (!video) {
       alert('Video not found');
@@ -65,20 +68,20 @@ export default function CivicAIHome() {
       // Convert to base64 image
       const photoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
       
-      console.log('Photo captured, data length:', photoDataUrl.length);
+      // Convert data URL to File object for upload
+      const response = await fetch(photoDataUrl);
+      const blob = await response.blob();
+      const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
       
-      if (photoDataUrl.length > 100) { // Basic check if image was captured
-        setPhoto(photoDataUrl);
-        
-        // Stop camera stream
-        const stream = video.srcObject as MediaStream;
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-        }
-        setIsCameraActive(false);
-      } else {
-        alert('Failed to capture photo. Please try again.');
+      setPhoto(photoDataUrl);
+      setPhotoFile(file); // Store for database upload
+      
+      // Stop camera stream
+      const stream = video.srcObject as MediaStream;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
       }
+      setIsCameraActive(false);
     } else {
       alert('Failed to create image context');
     }
@@ -102,22 +105,76 @@ export default function CivicAIHome() {
     }
   };
 
-  // Form submission
+  // Form submission with database integration
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    alert('Issue reported successfully! 🎉');
-    
-    // Reset form
-    setPhoto('');
-    setLocation(null);
-    setDescription('');
-    setCategory('');
-    setIsSubmitting(false);
+    try {
+      let imageUrl = '';
+      
+      // Upload image if exists
+      if (photoFile) {
+        console.log('Uploading image...');
+        const { data: uploadedUrl, error: uploadError } = await uploadImage(photoFile);
+        if (uploadError) {
+          console.error('Image upload failed:', uploadError);
+        } else {
+          imageUrl = uploadedUrl || '';
+        }
+      }
+      
+      // Determine department based on category
+      const getDepartment = (cat: string) => {
+        switch (cat) {
+          case 'pothole': return 'Public Works';
+          case 'streetlight': return 'Electrical';
+          case 'garbage': return 'Sanitation';
+          case 'traffic': return 'Traffic Management';
+          default: return 'General Services';
+        }
+      };
+      
+      // Create issue in database
+      const issueData = {
+        title: `${category.charAt(0).toUpperCase() + category.slice(1)} Issue Report`,
+        description,
+        category,
+        priority: 'medium', // Default priority
+        location_lat: location?.lat,
+        location_lng: location?.lng,
+        location_address: location ? `Lat: ${location.lat.toFixed(4)}, Lng: ${location.lng.toFixed(4)}` : 'Unknown',
+        image_url: imageUrl,
+        department: getDepartment(category),
+        reported_by: 'citizen_' + Date.now()
+      };
+      
+      console.log('Creating issue:', issueData);
+      const { data, error } = await createIssue(issueData);
+      
+      if (error) {
+        console.error('Database error:', error);
+        alert('Failed to submit issue. Please try again.');
+      } else {
+        console.log('Issue created successfully:', data);
+        setSubmitSuccess(true);
+        
+        // Reset form
+        setPhoto('');
+        setPhotoFile(null);
+        setLocation(null);
+        setDescription('');
+        setCategory('');
+        
+        // Show success for 3 seconds
+        setTimeout(() => setSubmitSuccess(false), 3000);
+      }
+    } catch (error) {
+      console.error('Submission error:', error);
+      alert('An error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -127,6 +184,16 @@ export default function CivicAIHome() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4">🏛️ CivicAI</h1>
           <p className="text-xl opacity-90">Report Civic Issues with AI Intelligence</p>
+          
+          {/* Navigation */}
+          <div className="mt-6">
+            <a
+              href="/admin"
+              className="inline-block bg-white/20 hover:bg-white/30 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+            >
+              🏛️ Municipal Dashboard
+            </a>
+          </div>
         </div>
 
         {/* Main Form */}
@@ -158,6 +225,7 @@ export default function CivicAIHome() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
+                        setPhotoFile(file); // Store file for upload
                         const reader = new FileReader();
                         reader.onload = (e) => setPhoto(e.target?.result as string);
                         reader.readAsDataURL(file);
@@ -256,14 +324,14 @@ export default function CivicAIHome() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => {setPhoto(''); startCamera();}}
+                      onClick={() => {setPhoto(''); setPhotoFile(null); startCamera();}}
                       className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg"
                     >
                       🔄 Retake Photo
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPhoto('')}
+                      onClick={() => {setPhoto(''); setPhotoFile(null);}}
                       className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg"
                     >
                       🗑️ Remove Photo
@@ -363,7 +431,16 @@ export default function CivicAIHome() {
           {isSubmitting && (
             <div className="mt-6 text-center">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-              <p className="mt-2">Processing your report...</p>
+              <p className="mt-2">Saving to database...</p>
+            </div>
+          )}
+
+          {/* Success Message */}
+          {submitSuccess && (
+            <div className="mt-6 bg-green-500 text-white p-4 rounded-lg text-center">
+              <div className="text-2xl mb-2">🎉</div>
+              <p className="font-semibold">Issue Reported Successfully!</p>
+              <p className="text-sm opacity-90">Your report has been saved and assigned to the appropriate department.</p>
             </div>
           )}
         </div>
