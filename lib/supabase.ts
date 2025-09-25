@@ -18,12 +18,76 @@ export interface Issue {
   location_lng?: number;
   location_address?: string;
   image_url?: string;
+  video_url?: string;
+  media_type?: string;
   reported_by?: string;
   assigned_to?: string;
   department?: string;
   created_at: string;
   updated_at: string;
 }
+
+// Enhanced media upload function
+export const uploadMedia = async (file: File) => {
+  try {
+    const fileExt = file.name.split('.').pop()?.toLowerCase();
+    const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
+    const fileType = file.type;
+    
+    // Determine which bucket to use
+    const isVideo = fileType.startsWith('video/');
+    const bucketName = isVideo ? 'issue-videos' : 'issue-images';
+    
+    console.log('Uploading file:', fileName, 'Type:', fileType, 'to bucket:', bucketName);
+    
+    // Check file size limits
+    const maxSize = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024; // 100MB vs 10MB
+    if (file.size > maxSize) {
+      const maxSizeMB = maxSize / (1024 * 1024);
+      return { 
+        data: null, 
+        error: `File too large. Maximum size is ${maxSizeMB}MB for ${isVideo ? 'videos' : 'images'}` 
+      };
+    }
+    
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from(bucketName)
+      .upload(fileName, file, {
+        contentType: fileType,
+        upsert: false
+      });
+    
+    if (error) {
+      console.error('Upload error:', error);
+      return { data: null, error: error.message };
+    }
+    
+    console.log('Upload successful:', data);
+    
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(fileName);
+    
+    console.log('Public URL generated:', urlData.publicUrl);
+    
+    return { 
+      data: {
+        url: urlData.publicUrl,
+        type: isVideo ? 'video' : 'image'
+      }, 
+      error: null 
+    };
+    
+  } catch (err) {
+    console.error('Upload function error:', err);
+    return { data: null, error: (err as Error).message };
+  }
+};
+
+// Keep backward compatibility
+export const uploadImage = uploadMedia;
 
 // Database functions
 export const createIssue = async (issueData: Partial<Issue>) => {
@@ -73,36 +137,4 @@ export const subscribeToIssues = (callback: (payload: any) => void) => {
       callback
     )
     .subscribe();
-};
-
-// File upload function
-export const uploadImage = async (file: File, bucket = 'issue-images') => {
-  try {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}.${fileExt}`;
-    
-    console.log('Uploading file:', fileName, 'to bucket:', bucket);
-    
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(fileName, file);
-    
-    if (error) {
-      console.error('Upload error:', error);
-      return { data: null, error };
-    }
-    
-    console.log('Upload successful:', data);
-    
-    const { data: urlData } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(fileName);
-    
-    console.log('Public URL:', urlData.publicUrl);
-    
-    return { data: urlData.publicUrl, error: null };
-  } catch (err) {
-    console.error('Upload function error:', err);
-    return { data: null, error: err };
-  }
 };

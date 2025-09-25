@@ -267,14 +267,21 @@ export default function AdminDashboard() {
                   setShowModal(true);
                 }}
               >
-                {/* Issue Image */}
-                {issue.image_url && (
-                  <img
-                    src={issue.image_url}
-                    alt={issue.title}
-                    className="w-full h-48 object-cover rounded-t-xl"
-                  />
-                )}
+                {/* In the issue card - replace image display */}
+                  {issue.video_url && (
+                    <video
+                      src={issue.video_url}
+                      controls
+                      className="w-full h-48 object-cover rounded-t-xl"
+                    />
+                  )}
+                  {issue.image_url && !issue.video_url && (
+                    <img
+                      src={issue.image_url}
+                      alt={issue.title}
+                      className="w-full h-48 object-cover rounded-t-xl"
+                    />
+                  )}
                 
                 {/* Issue Content */}
                 <div className="p-6">
@@ -336,13 +343,21 @@ export default function AdminDashboard() {
             </div>
             
             <div className="p-6">
-              {selectedIssue.image_url && (
-                <img
-                  src={selectedIssue.image_url}
-                  alt={selectedIssue.title}
-                  className="w-full h-64 object-cover rounded-lg mb-6"
-                />
-              )}
+              {/* In the modal - replace image display */}
+                  {selectedIssue.video_url && (
+                    <video
+                      src={selectedIssue.video_url}
+                      controls
+                      className="w-full h-64 rounded-lg mb-6"
+                    />
+                  )}
+                  {selectedIssue.image_url && !selectedIssue.video_url && (
+                    <img
+                      src={selectedIssue.image_url}
+                      alt={selectedIssue.title}
+                      className="w-full h-64 object-cover rounded-lg mb-6"
+                    />
+                  )}
               
               <div className="space-y-4">
                 <div>
