@@ -545,7 +545,7 @@ export default function CivicAIHome() {
 
         {/* Footer */}
         <div className="text-center mt-12 opacity-75">
-          <p>🤖 Powered by AI • 🏛️ Built for Smart Cities</p>
+          <p>🏛️ Built for Smart Cities</p>
         </div>
       </div>
     </div>
